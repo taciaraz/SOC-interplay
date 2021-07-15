@@ -1,0 +1,57 @@
+model;extrapolate;set;metric;value
+Cubist;FALSE;train;rmse;1.23
+Cubist;FALSE;train;R2;0.56
+Cubist;FALSE;train;bias;0.13
+Cubist;FALSE;train;mae;0.65
+Cubist;FALSE;train;mdae;0.35
+Cubist;FALSE;train;rpiq;1.41
+Cubist;FALSE;train;rhoC;0.69
+Cubist;FALSE;val;rmse;1.5
+Cubist;FALSE;val;R2;0.33
+Cubist;FALSE;val;bias;-0.19
+Cubist;FALSE;val;mae;1
+Cubist;FALSE;val;mdae;0.59
+Cubist;FALSE;val;rpiq;1.15
+Cubist;FALSE;val;rhoC;0.54
+Cubist;TRUE;train;rmse;1.238812
+Cubist;TRUE;train;R2;0.5586144
+Cubist;TRUE;train;bias;0.1577674
+Cubist;TRUE;train;mae;0.6311122
+Cubist;TRUE;train;mdae;0.3210338
+Cubist;TRUE;train;rpiq;1.402553
+Cubist;TRUE;train;rhoC;0.6838071
+Cubist;TRUE;val;rmse;1.27
+Cubist;TRUE;val;R2;0.52
+Cubist;TRUE;val;bias;-0.03
+Cubist;TRUE;val;mae;0.84
+Cubist;TRUE;val;mdae;0.48
+Cubist;TRUE;val;rpiq;1.36
+Cubist;TRUE;val;rhoC;0.66
+Random forest;FALSE;train;rmse;0.6755778
+Random forest;FALSE;train;R2;0.8687323
+Random forest;FALSE;train;bias;0.007812116
+Random forest;FALSE;train;mae;0.3691637
+Random forest;FALSE;train;mdae;0.1946872
+Random forest;FALSE;train;rpiq;2.571873
+Random forest;FALSE;train;rhoC;0.9171196
+Random forest;FALSE;val;rmse;1.499965
+Random forest;FALSE;val;R2;0.3346031
+Random forest;FALSE;val;bias;-0.1915521
+Random forest;FALSE;val;mae;0.9991705
+Random forest;FALSE;val;mdae;0.5897973
+Random forest;FALSE;val;rpiq;1.15336
+Random forest;FALSE;val;rhoC;0.5439238
+Random forest;TRUE;train;rmse;1.069946
+Random forest;TRUE;train;R2;0.6707462
+Random forest;TRUE;train;bias;0.6836414
+Random forest;TRUE;train;mae;0.7486756
+Random forest;TRUE;train;mdae;0.5858379
+Random forest;TRUE;train;rpiq;1.623914
+Random forest;TRUE;train;rhoC;0.7860108
+Random forest;TRUE;val;rmse;1.555474
+Random forest;TRUE;val;R2;0.284443
+Random forest;TRUE;val;bias;0.4860623
+Random forest;TRUE;val;mae;1.065537
+Random forest;TRUE;val;mdae;0.7233343
+Random forest;TRUE;val;rpiq;1.112201
+Random forest;TRUE;val;rhoC;0.478235
