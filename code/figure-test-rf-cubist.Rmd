@@ -1,0 +1,72 @@
+---
+title: "new-figure-test"
+author: "Horst-Heinen"
+date: "13/07/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+results <- read.csv("D:/Artigos/paper1/paper1_versao3/extrapolation-parameters/results.csv", sep = ";")
+library(gridExtra)
+library(grid)
+library(ggplot2)
+
+cub <- results[results$model == "Cubist",]
+rf <- results[results$model == "Random forest",]
+
+t2 <- ggplot2::ggplot(results, 
+                        aes(x=set, y= value, 
+                            color=as.factor(extrapolate), 
+                            shape = as.factor(extrapolate))) +
+  geom_point(size = 4) +
+  facet_grid(metric ~ model) +
+  ggtitle(" ") +
+  #scale_x_continuous(breaks=seq(0.7, 1.7, 0.2)) +
+  labs(subtitle="Random forest") +
+  xlab("data set") + ylab("metrics")+
+  labs(colour = "extrapolate") +
+  theme(text = element_text(size=22))
+t2
+
+
+grid.arrange(t1, t2, ncol=1)
+```
+
+
+```{r}
+pred_data <- read.csv("D:/Artigos/paper1/paper1_versao3/extrapolation-parameters/dados_preditos.csv", sep = ";")
+library(gridExtra)
+library(grid)
+library(ggplot2)
+
+cub <- pred_data[pred_data$model == "Cubist",]
+rf <- pred_data[pred_data$model == "Random forest",]
+
+theme_set(theme_classic())
+
+ggplot(rf, aes(y=predict, x= obsDC, col=as.factor(extrapolation), shape = extrapolation)) + 
+    geom_point(size = 2) +
+      xlim(0, max(rf$obsDC) + 2) +
+      ylim(0, max(rf$predict) + 2) +
+      coord_cartesian(expand = F) +
+      geom_abline(slope = 1, intercept = 0, col = "red", size = 0.5) +
+      labs(x = "Predito", y = "Observado",
+           title = paste("DC validation - Random forest")) +
+      theme(plot.title = element_text(hjust = 0.5),
+            axis.title = element_text(face = "bold"))
+
+
+ggplot(cub, aes(y=predict, x= obsDC, col=as.factor(extrapolation), shape = extrapolation)) + 
+    geom_point(size = 2) +
+      xlim(0, max(rf$obsDC) + 2) +
+      ylim(0, max(rf$predict) + 2) +
+      coord_cartesian(expand = F) +
+      geom_abline(slope = 1, intercept = 0, col = "red", size = 0.5) +
+      labs(x = "Predito", y = "Observado",
+           title = paste("DC validation - Cubist")) +
+      theme(plot.title = element_text(hjust = 0.5),
+            axis.title = element_text(face = "bold"))
+
+```

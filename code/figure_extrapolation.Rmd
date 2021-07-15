@@ -1,0 +1,370 @@
+---
+title: "figure_extrapolation"
+author: "Horst-Heinen"
+date: "14/07/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(magrittr)
+library(maptools)
+library(dplyr)
+library(purrr)
+```
+
+```{r}
+path <- "../results/corr.bias-FALSE/performance/PredObs/DC"
+file <- c(paste("DC_",1:25,".csv",sep=""))
+data <- read.csv(paste(path,"DC_1.csv",sep="/")) #Read first file to create variables in a data frame
+
+#Read remaining files and rbind them to dataset
+for (i in file) {
+   data <- rbind(data, read.csv(paste(path, file[i], sep="/")))
+}
+
+data$method <- "DC"
+data$extrapolation <- "TRUE"
+DC_TRUE <-  data
+colnames(DC_TRUE)[2] <- "SOC"
+
+
+pred_all <-  rbind(DC_TRUE, 
+                   WCc_TRUE,
+                   WCt_TRUE,
+                   WCt_FALSE,
+                   WCc_FALSE,
+                   DC_FALSE)
+
+write.csv(pred_all, "D:/Artigos/paper1/paper1_versao3/results/pred.csv")
+```
+
+```{r}
+library(dplyr)
+library(readr)
+data <- list.files(path="../results/corr.bias-TRUE/performance/PredObs/WCT", full.names = TRUE) %>% 
+  lapply(read.csv) %>% 
+  bind_rows 
+
+data$method <- "WCT"
+data$extrapolation <- "TRUE"
+
+WCT_TRUE <-  data
+colnames(WCT_TRUE)[2] <- "SOC"
+
+pred_all <-  rbind(DC_TRUE, 
+                   WCC_TRUE,
+                   WCT_TRUE,
+                   WCT_FALSE,
+                   WCC_FALSE,
+                   DC_FALSE)
+
+
+WCC_FALSE
+WCT_FALSE
+DC_FALSE
+DC_TRUE
+WCC_TRUE
+WCT_TRUE
+
+#write.csv(pred_all, "../results/result_all.csv")
+```
+
+agregate
+```{r}
+#function
+mean <- aggregate(
+  x = pred_all[c("SOC", "predict_teste")],
+  by = pred_all[c("di", "extrapolation", "method")],
+  FUN = mean, na.rm = TRUE
+)
+
+sd <- aggregate(
+  x = pred_all[c("predict_teste")],
+  by = pred_all[c("di", "extrapolation", "method")],
+  FUN = sd, na.rm = TRUE
+)
+
+p5 <- aggregate(
+  x = pred_all[c("predict_teste")],
+  by = pred_all[c("di", "extrapolation", "method")],
+  FUN = function(x) quantile(x, probs = 0.05))
+
+p95 <- aggregate(
+  x = pred_all[c("predict_teste")],
+  by = pred_all[c("di", "extrapolation", "method")],
+  FUN = function(x) quantile(x, probs = 0.95))
+
+
+result_val_pred <-  as.data.frame(cbind(mean, sd$predict_teste, p5$predict_teste, p95$predict_teste))
+result_val_pred$IP90 <-  p95$predict_teste - p5$predict_teste
+
+colnames(result_val_pred)[5] <- "mean"
+colnames(result_val_pred)[6] <- "sd"
+colnames(result_val_pred)[7] <- "p9"
+colnames(result_val_pred)[8] <- "p95"
+colnames(result_val_pred)[9] <- "IP"
+
+#NAO SALVAR - TEM SITE
+write.csv(result_val_pred, "../results/result_val_pred_agreg.csv")
+```
+
+```{r}
+pred_data <- read.csv("../results/result_val_pred_agreg.csv")
+library(gridExtra)
+library(grid)
+library(ggplot2)
+
+eTRUE <- pred_data[pred_data$extrapolation == "TRUE",]
+DCeTRUE <- eTRUE[eTRUE$method == "DC",]
+WCCeTRUE <- eTRUE[eTRUE$method == "WCC",]
+WCTeTRUE <- eTRUE[eTRUE$method == "WCT",]
+
+eFALSE <- pred_data[pred_data$extrapolation == "FALSE",]
+
+DCeFALSE <- eFALSE[eFALSE$method == "DC",]
+WCCeFALSE <- eFALSE[eFALSE$method == "WCC",]
+WCTeFALSE <- eFALSE[eFALSE$method == "WCT",]
+
+### -------------------------------
+library(gridExtra)
+library("viridis")
+library(ggplot2)
+theme_set(theme_bw())
+
+eF <- ggplot(WCTeFALSE, aes(y=mean, x= SOC, col= IP)) + 
+      geom_point(size = 2) +
+      scale_colour_gradientn(colours = rev(magma(8)), limits=c(0,10)) +
+      #scale_fill_grey() +
+      #scale_colour_gradient(low="blue", high="black") +
+      geom_rug(alpha = 0.18) +
+      geom_abline(slope=1, intercept = 0) +
+      geom_errorbar(aes(ymin = p9, ymax = p95), width=.3,
+                   position=position_dodge(0.05)) + 
+      scale_x_continuous(breaks=seq(1, 25, 5)) +
+      scale_y_continuous(breaks=seq(1, 25, 5)) +
+      ggtitle("(a) WCt Extrapolation = FALSE") +
+      xlab("Observed SOC (%)") + ylab("Predict SOC (%)") +
+      labs(colour = "PI") +
+      theme(text = element_text(size=16))
+
+eT <- ggplot(WCTeTRUE, aes(y=mean, x= SOC, col= IP)) + 
+      geom_point(size = 2) +
+      scale_colour_gradientn(colours = rev(magma(8)), limits=c(0,10)) +
+      #scale_fill_grey() +
+      #scale_colour_gradient(low="blue", high="black") +
+      geom_rug(alpha = 0.18) +
+      geom_abline(slope=1, intercept = 0) +
+      geom_errorbar(aes(ymin = p9, ymax = p95), width=.3,
+                   position=position_dodge(0.05)) + 
+      scale_x_continuous(breaks=seq(1, 25, 5)) +
+      scale_y_continuous(breaks=seq(1, 25, 5)) +
+      ggtitle("(b) WCt Extrapolation = TRUE") +
+      xlab("Observed SOC (%)") + ylab("Predict SOC (%)") +
+      labs(colour = "PI") +
+      theme(text = element_text(size=16))
+
+grid.arrange(eT, eF, ncol=1)
+```
+
+Performance
+```{r}
+
+DC_FALSE <- read.csv("../results/corr.bias-FALSE/performance/planilhas/DC.csv", sep=",")
+DC_FALSE$extrapolation <- "FALSE"
+DC_TRUE <- read.csv("../results/corr.bias-TRUE/performance/planilhas/DC.csv", sep=",")
+DC_TRUE$extrapolation <- "TRUE"
+DC <- rbind(DC_FALSE, DC_TRUE)
+
+WCC_FALSE <- read.csv("../results/corr.bias-FALSE/performance/planilhas/WCc.csv", sep=",")
+WCC_FALSE$extrapolation <- "FALSE"
+WCC_TRUE <- read.csv("../results/corr.bias-TRUE/performance/planilhas/WCc.csv", sep=",")
+WCC_TRUE$extrapolation <- "TRUE"
+WCC <- rbind(WCC_FALSE, WCC_TRUE)
+
+WCT_FALSE <- read.csv("../results/corr.bias-FALSE/performance/planilhas/WCt.csv", sep=",")
+WCT_FALSE$extrapolation <- "FALSE"
+WCT_TRUE <- read.csv("../results/corr.bias-TRUE/performance/planilhas/WCt.csv", sep=",")
+WCT_TRUE$extrapolation <- "TRUE"
+WCT<- rbind(WCT_FALSE, WCT_TRUE)
+
+result <- rbind(DC, WCC, WCT)
+###write.csv(result, "../results/performance.csv")
+
+####
+
+```
+
+residuos
+
+```{r}
+pred_data <- read.csv("../results/result_val_pred_agreg.csv")
+pred_data$res <- pred_data$SOC - pred_data$mean
+pred_data$extrapolation <- as.factor(pred_data$extrapolation)
+
+
+DC <- pred_data[pred_data$method == "DC",]
+WCC <- pred_data[pred_data$method == "WCC",]
+WCT <- pred_data[pred_data$method == "WCT",]
+
+eFALSE <- pred_data[pred_data$extrapolation == "FALSE",]
+eTRUE <- pred_data[pred_data$extrapolation == "TRUE",]
+DCeFALSE <- eFALSE[eFALSE$method == "DC",]
+WCCeFALSE <- eFALSE[eFALSE$method == "WCC",]
+WCTeFALSE <- eFALSE[eFALSE$method == "WCT",]
+
+
+library(gridExtra)
+library(grid)
+library(ggplot2)
+
+#produce residual vs. fitted plot
+plot(DC$res, main = "DC", col= DC$extrapolation)
+abline(0,0)
+
+qqnorm(DC$res, main = "DC", col= DC$extrapolation)
+qqline(DC$res)
+
+
+
+plot(WCC$res, main = "WCC", col= WCC$extrapolation)
+abline(0,0)
+
+qqnorm(WCC$res, main = "WCC", col= WCC$extrapolation)
+qqline(WCC$res)
+
+
+
+plot(WCT$res, main = "WCT", col= WCT$extrapolation)
+abline(0,0)
+
+qqnorm(WCT$res, main = "WCT", col= WCT$extrapolation)
+qqline(WCT$res)
+
+```
+
+
+```{r}
+result <-  read.csv("../results/performance.csv", sep = ";")
+mean <- aggregate(
+  x = result[c("r2", "rmse", "mae")],
+  by = result[c("method", "set", "extrapolate")],
+  FUN = mean, na.rm = TRUE
+)
+
+mean$FUN <- "mean"
+
+sd <- aggregate(
+  x = result[c("r2", "rmse", "mae")],
+  by = result[c("method", "set", "extrapolate")],
+  FUN = sd, na.rm = TRUE
+)
+
+sd$FUN <- "sd"
+
+results <- mean
+results$r2max <- mean$r2 + sd$r2
+results$r2min <- mean$r2 - sd$r2
+
+results$rmsemin <- mean$rmse - sd$rmse
+results$rmsemax<- mean$rmse + sd$rmse
+
+results$maemin <- mean$mae - sd$mae
+results$maemax<- mean$mae + sd$mae
+
+
+library(ggplot2)
+library(gridExtra)
+
+DC <- results[results$method == "DC",]
+WCC <- results[results$method == "WCc",]
+WCT <- results[results$method == "WCt",]
+
+
+#theme_set(theme_minimal())
+#theme_set(theme_classic())
+#theme_set(theme_light())
+theme_set(theme_bw()) 
+
+t1 <- ggplot2::ggplot(results, aes(x=mae, y=r2, color=as.factor(extrapolate), shape = extrapolate)) + 
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = r2min, ymax = r2max)) + 
+  geom_errorbarh(aes(xmin = maemin,xmax = maemax)) +
+  facet_grid(method ~ set) +
+  ggtitle("Models assessments") +
+  labs(subtitle=" ") +
+  xlab("MAE (%)") + ylab(expression("R" ^ 2)) +
+  #labs(colour = "SOC input") +
+  theme(text = element_text(size=16))
+t1
+
+```
+
+```{r}
+result <-  read.csv("../results/performance_metric.csv", sep = ";")
+#######################
+mean <- aggregate(
+  x = result[c("value")],
+  by = result[c("metric", "set", "extrapolation", "method")],
+  FUN = mean, na.rm = TRUE
+)
+
+mean$FUN <- "mean"
+
+sd <- aggregate(
+  x = result[c("value")],
+  by = result[c("metric", "set", "extrapolation", "method")],
+  FUN = sd, na.rm = TRUE
+)
+
+sd$FUN <- "sd"
+#################
+results <- mean
+r2max <- mean$r2 + sd$r2
+r2min <- mean$r2 - sd$r2
+
+rmsemin <- mean$rmse - sd$rmse
+rmsemax<- mean$rmse + sd$rmse
+
+maemin <- mean$mae - sd$mae
+maemax<- mean$mae + sd$mae
+
+
+###################
+t2 <- ggplot2::ggplot(mean, 
+                        aes(x=set, y= value, 
+                            color=as.factor(extrapolation), 
+                            shape = as.factor(extrapolation))) +
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = sd,ymax =sd)) +
+  geom_errorbarh(aes(xmin = sd, xmax = sd)) + 
+  facet_grid(metric ~ method) +
+  ggtitle(" ") +
+  #scale_x_continuous(breaks=seq(0.7, 1.7, 0.2)) +
+  labs(subtitle="Random forest") +
+  xlab("data set") + ylab("metrics")+
+  labs(colour = "extrapolate") +
+  theme(text = element_text(size=22))
+t2
+
+
+ggplot2::ggplot(WCT, aes(x=rmse, y=bias, color=as.factor(method), shape = set)) + 
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = biasmin,ymax =biasmin)) +
+  geom_errorbarh(aes(xmin = rmsemin, xmax = rmsemax)) + 
+  facet_grid(pp ~ model) +
+  ggtitle(" ") +
+  labs(subtitle="(b)") +
+  geom_hline(yintercept=c(0), linetype="dotted") +
+  xlab("ME (%)") + ylab("RMSE (%)") +
+  labs(colour = "SOC input") +
+  theme(text = element_text(size=16))
+```
+
+
+
+
+
+
+

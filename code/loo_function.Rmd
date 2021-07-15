@@ -1,0 +1,394 @@
+---
+title: "code_functionloop"
+author: "Horst-Heinen"
+date: "11/07/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r}
+gc()
+
+pkg <- c("dplyr", "caret", "Metrics", "doParallel", "janitor", "gtools", 
+        "Cubist", "randomForest", "e1071", "ggplot2",
+         "rcompanion", "multcompView", "tmap", "tmaptools", "tidyr",
+         "sf", "fasterize", "beepr", "gbm", "kernlab", "stringr", "Metrics")
+sapply(pkg, require, character.only = T)
+```
+
+```{r Goodness of fit}
+library(Metrics)
+
+rhoC <- function(obs, pred) {
+n <- length(pred)
+sdPred <- sd(pred, na.rm = T)
+sdObs <- sd(obs, na.rm = T)
+r <- stats::cor(pred, obs, method = "pearson", use = "pairwise.complete.obs")
+# scale shift
+v <- sdPred / sdObs
+sPred2 <- var(pred, na.rm = T) * (n - 1) / n
+sObs2 <- var(obs, na.rm = T) * (n - 1) / n
+# location shift relative to scale
+u <- (mean(pred, na.rm = T) - mean(obs, na.rm = T)) / ((sPred2 * sObs2)^0.25)
+Cb <- ((v + 1 / v + u^2)/2)^-1
+rCb <- r * Cb
+return(rCb)
+}
+
+rpiq <- function(obs, pred){
+q25 <- as.numeric(quantile(obs)[2])
+q75 <- as.numeric(quantile(obs)[4])
+iqDist <- q75 - q25
+RMSE <- sqrt(mean((pred - obs)^2))
+rpiq <- iqDist/RMSE
+return(rpiq)
+}
+
+R2 <- function(obs, pred){
+# sum of the squared error
+SSE <- sum((pred - obs) ^ 2, na.rm = T)
+# total sum of squares
+SST <- sum((obs - mean(obs, na.rm = T)) ^ 2, na.rm = T)
+R2 <- 1 - SSE/SST
+return(R2)
+}
+```
+
+```{r}
+# Criando pastas de resultados --------------------------------------------
+dir.create(paste0(path_resultados, "imagem_modelos/"))
+dir.create(paste0(path_resultados, "performance/"))
+dir.create(paste0(path_resultados, "figuras/"))
+dir.create(paste0(path_resultados, "performance/", "PredObs"))
+dir.create(paste0(path_resultados, "performance/", "figuras"))
+dir.create(paste0(path_resultados, "performance/", "planilhas"))
+```
+
+```{r}
+# Processando os dados --------------------------------------------
+rm(list = ls())
+
+data <- read.csv("../data/data_soc_methods.csv", sep = ";")
+soc_methods <- data[,c(18:20)] #17 DRY, 18 DICRO, 19 COLO
+spectra <- data[c(24:length(data))]
+
+# Smoothing - SMO
+SMO <- prospectr::movav(spectra, w = 9)%>%  # w = tamanho da janela (número de bandas)
+as.data.frame()
+
+#Savitzky-Golay Derivative - 1 - 9nm
+SGD <- prospectr::savitzkyGolay(spectra, p = 1, w = 9, m = 1)%>%   # p = ordem do polinomio; w = tamanho da janela; m = ordem da derivada
+as.data.frame()
+#Continuum Removal
+ContRem <- prospectr::continuumRemoval(X = spectra, type = "R")
+CRR <- ContRem[,c(-1,-ncol(ContRem))]
+CRR <- cbind(CRR)
+colnames(CRR)[1:2143] <- paste0("X", c(355:2499)) %>% 
+as.data.frame()
+
+```
+
+Definir matriz de dados (X e Y)
+
+```{r}
+
+
+# Pasta generica
+path_raiz <- "D:/Artigos/paper1/paper1_versao3/code"
+
+# Resultados
+path_resultados <- "D:/Artigos/paper1/paper1_versao3/results/"
+setwd(path_raiz)
+
+# Configuracao modelagem --------------------------------------------------
+
+#modelo <- c("pls", "rf", "cubist")
+
+variaveis_y <- colnames(soc_methods)[1:3]  # 1 = DC, 2 = WCC, 3 = WCT
+
+dados <- cbind(soc_methods, SMO)
+
+modelo <- "rf"
+
+metric_ml <- "RMSE"
+number_train <- 10
+repeat_train <- 2
+n_vezes <- 25
+tipo <- "length"
+tn_ln <- 6
+
+
+memory.size(64000)
+dev.new()
+for(i in seq_along(variaveis_y)){
+  
+  tStart_final <- Sys.time()
+  if (i == 1) {
+    
+    tStart_final_geral <- Sys.time()
+    
+  }
+  
+  
+  # Preparando dados --------------------------------------------------------
+  
+setwd(path_raiz)
+  
+dados_base <- dados %>% 
+select(-variaveis_y) %>% 
+cbind(select(dados, variaveis_y[i]), .)
+  
+df_result_final_rf <- data.frame(modelo = integer(n_vezes), 
+                                   var_pred = integer(n_vezes),
+                                   
+                                   n_treino = integer(n_vezes), 
+                                   R2_treino = numeric(n_vezes), 
+                                   RMSE_treino = numeric(n_vezes), 
+                                   MAE_treino = numeric(n_vezes), 
+                                   RPIQ_treino = numeric(n_vezes),
+                                   BIAS_treino = numeric(n_vezes),
+                                   n_teste = integer(n_vezes), 
+                                   R2_teste = numeric(n_vezes), 
+                                   RMSE_teste = numeric(n_vezes), 
+                                   MAE_teste = numeric(n_vezes),
+                                   RPIQ_teste = numeric(n_vezes),
+                                   BIAS_teste = numeric(n_vezes)
+                                   )
+  
+  
+set.seed(123) #ate25
+#set.seed(456) #ate50
+v_seed <- sample(1:100000, 100)
+n_col_df <- 1
+  
+  
+for (l in 1:n_vezes) {
+    
+# Criando lista vazia para modelos treinados
+if(l == 1) {
+lista_modelo <- list()
+lista_var_imp <- list()
+lista_pred_teste <- list()
+}
+    
+tStart <- Sys.time()
+print("-------------------------------------------------------------------")
+print(tStart)
+print("-------------------------------------------------------------------")
+    
+print(paste("Variavel", variaveis_y[i]))
+print(paste("Execucao", n_col_df, "de", n_vezes))
+print("-------------------------------------------------------------------")
+    
+# Variavel preditora
+variavel <- variaveis_y[i]
+    
+# Preparacao dos dados ----------------------------------------------------
+dx <- dados_base %>% dplyr::select(-c(variavel))
+dy <- dados_base %>% dplyr::select(variavel)
+di <- data$id  #add id para possibilitar o cálculo o range da predição
+    
+# Covariaveis com variavel preditora
+dxy_sel_id <- cbind(di, dy, dx) #guarda o id da amostra, mas não entra na predição
+dxy_sel <- dxy_sel_id[2:length(dxy_sel_id)]
+  
+# Separando treino e teste ------------------------------------------------
+set.seed(v_seed[l])
+vf <- createDataPartition(dxy_sel_id[, 2], p = 0.70, list = F)
+    
+treino <- data.frame(dxy_sel_id[vf, ])
+treino <- treino[2:length(treino)]
+n_treino <- nrow(treino)
+    
+testeid <- data.frame(dxy_sel_id[-vf, ])
+teste <- testeid[2:length(testeid)]
+n_teste <- nrow(teste)
+    
+dat <- treino %>% dplyr::select(variavel, colnames(dx))
+    
+
+# Treinando modelo --------------------------------------------------------
+ctrl_model <- trainControl(method = "repeatedcv", 
+                               number = number_train,
+                               repeats = repeat_train,
+                               savePredictions = T,
+                               allowParallel = FALSE)
+    
+if (l == 1) {
+      
+cl <- parallel::makeCluster(11)
+cl <- parallelly::autoStopCluster(cl)
+}
+    
+    
+formu_model <- paste(names(dxy_sel)[1], "~ .")
+registerDoParallel(cl)
+
+     # Treinando modelo --------------------------------------------------------
+
+    ctrl_model <- trainControl(method = "repeatedcv", 
+                               number = number_train,
+                               repeats = repeat_train,
+                               savePredictions = T,
+                               allowParallel = FALSE)
+
+
+if (modelo == "rf") {
+fit <- train(form = eval(parse(text = paste0(formu_model))),
+                   data = dat, 
+                   metric = metric_ml,
+                   method = modelo, 
+                   trControl = ctrl_model,
+                   tuneLength = tn_ln,
+                   tuneGrid = expand.grid(.mtry = seq(1, 20, 2)),
+                   na.action = na.omit#,
+                   #corr.bias = TRUE
+             )
+      
+} else if (modelo == "cubist") {
+      fit <- train(x = dat[, -1], y = dat[, 1], 
+                   metric = metric_ml,
+                   method = modelo, 
+                   trControl = ctrl_model,
+                   tuneGrid = expand.grid(.committees = c(1, 10, 50), .neighbors = c(0, 1, 5, 9)),
+                   control = cubistControl(extrapolation = 0))
+    
+} else {
+     fit <- train(form = eval(parse(text = paste0(formu_model))),
+                   data = dat, 
+                   metric = metric_ml,
+                   method = modelo, 
+                   trControl = ctrl_model,
+                   tuneLength = tn_ln,
+                   tuneGrid = expand.grid(.ncomp = seq(1, 20, 1))
+                   )
+    }
+    
+    
+# Salvando modelo
+lista_modelo[[l]] <- fit
+    
+pred <- predict(fit, dplyr::select(teste, colnames(dx)))
+    
+pd_obs <- ggplot() +
+  geom_point(aes(x = pred, y = teste[, 1]), alpha = 0.5) +
+  xlim(0, max(teste[, 1]) + 2) +
+  ylim(0, max(teste[, 1]) + 2) +
+  coord_cartesian(expand = F) +
+  geom_abline(slope = 1, intercept = 0, col = "red", size = 0.5) +
+  labs(x = "Predict", y = "Observed",
+       title = paste(fit[["modelInfo"]][["label"]], variavel)) +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.title = element_text(face = "bold"))
+    
+print(pd_obs)
+    
+
+Sys.sleep(5)
+    
+# Performance -------------------------------------------------------------
+fit_models <- list(fit)
+    
+importancia <- varImp(fit_models[[1]])
+    
+predict_teste <- predict(fit, dplyr::select(teste, colnames(dx)))
+    
+post_resamp <- postResample(predict_teste, teste[, 1])
+    
+    
+Sys.sleep(5)
+    
+####
+    
+lista_pred_teste[[l]] <- data.frame(cbind(testeid[1], teste[variavel], predict_teste))
+    
+write.csv(lista_pred_teste[[l]],
+          paste0(path_resultados, "performance/PredObs/",
+          "/", variavel, "_", l, ".csv"), row.names = F)
+    
+####
+    
+Sys.sleep(5)
+    
+    
+print(fit)
+    
+    
+df_result_final_rf$modelo[n_col_df] <- fit[["modelInfo"]][["label"]]
+df_result_final_rf$var_pred[n_col_df] <- names(treino)[1]
+df_result_final_rf$n_treino[n_col_df] <- nrow(treino) 
+df_result_final_rf$R2_treino[n_col_df] <- fit_models[[1]]$results[rownames(fit_models[[1]]$bestTune[1]), ]$Rsquared
+df_result_final_rf$MAE_treino[n_col_df] <- fit_models[[1]]$results[rownames(fit_models[[1]]$bestTune[1]), ]$MAE
+df_result_final_rf$RMSE_treino[n_col_df] <- fit_models[[1]]$results[rownames(fit_models[[1]]$bestTune[1]), ]$RMSE
+
+
+df_result_final_rf$n_teste[n_col_df] <- nrow(teste) 
+df_result_final_rf$R2_teste[n_col_df] <- as.numeric(post_resamp["Rsquared"])
+df_result_final_rf$MAE_teste[n_col_df] <- as.numeric(post_resamp["MAE"])
+df_result_final_rf$RMSE_teste[n_col_df] <- as.numeric(post_resamp["RMSE"])
+
+    
+write.csv(df_result_final_rf,
+          paste0(path_resultados, "performance/planilhas/", variavel,
+                 ".csv"), row.names = F, dec = ".", sep = ";")
+    
+save.image(paste0(path_resultados, "imagem_modelos/", variavel, ".RData"))
+    
+n_col_df <- n_col_df + 1 
+    
+plot_result_final_rf <- df_result_final_rf %>% 
+      mutate(repeticao = as.numeric(row.names(.))) %>% 
+      dplyr::select(repeticao, modelo, RMSE_treino, MAE_treino, R2_treino,
+                    RMSE_teste, MAE_teste, R2_teste) %>% 
+      tidyr::gather(key = "metrica", value = valor,
+                    -c(repeticao, modelo)) %>% 
+      tidyr::separate(metrica, c("metrica", "dados")) %>%
+      filter(valor > 0) %>% 
+      ggplot(aes(y = valor, x = repeticao, fill = dados)) +
+      labs(y = NULL) +
+      scale_y_continuous(expand = c(0, 0, 0.05, 0)) +
+      scale_fill_viridis_d() +
+      scale_x_continuous(breaks = seq(1, 100, 1)) +
+      geom_col(position = "dodge") + 
+      facet_wrap(~metrica, scales = "free") 
+    
+print(plot_result_final_rf)
+    
+ggsave(plot_result_final_rf,
+           filename = paste0(path_resultados, "performance/figuras/", variavel, ".jpg"), dpi = 600, width = 16, height = 9,
+           units = "in")
+    
+print("-------------------------------------------------------------------")
+print(paste(fit[["modelInfo"]][["label"]], variavel))
+print(Sys.time() - tStart)
+print("-------------------------------------------------------------------")
+    
+beep(10)
+  }
+  
+  print("-------------------------------------------------------------------")
+  print("-------------------------------------------------------------------")
+  print(paste(fit[["modelInfo"]][["label"]], "TOTAL", variavel))
+  print(Sys.time() - tStart_final)
+  print("-------------------------------------------------------------------")
+  
+  if (i == length(variaveis_y)) {
+    
+    print("-------------------------------------------------------------------")
+    print("-------------------------------------------------------------------")
+    print(paste(fit[["modelInfo"]][["label"]], "TOTAL GERAL"))
+    print(Sys.time() - tStart_final_geral)
+    print("-------------------------------------------------------------------")
+    
+  }
+  
+}
+
+paste0(path_resultados, "performance/PredObs/", variavel,
+                      "/", variavel, "_", l, ".csv")
+
+```
+
+
+
